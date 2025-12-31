@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "202232944250",
+    "project_id": "serplusvita",
+    "storage_bucket": "serplusvita.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:202232944250:android:53a3db6056d3233e028dc3",
+        "android_client_info": {
+          "package_name": "com.tridevs.serplusvita"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD2p9jsfcQe3vIxxQ6m9vWh6t9fkYhA3ec"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
