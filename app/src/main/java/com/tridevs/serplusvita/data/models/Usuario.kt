@@ -28,11 +28,11 @@ data class MedidasUsuario(
 )
 
 data class UsuarioUpdateRequest(
-    val nombre: String?,
-    val altura: Int?,
-    val peso: Double?,
+    val nombre: String? = null,
+    val altura: Int? = null,
+    val peso: Double? = null,
     @SerialName("fecha_nacimiento")
-    val fechaNacimiento: String?
+    val fechaNacimiento: String? = null
 )
 
 data class UsuarioRegistro(

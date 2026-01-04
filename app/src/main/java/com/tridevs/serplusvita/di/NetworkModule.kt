@@ -5,7 +5,7 @@ import com.google.gson.GsonBuilder
 import com.tridevs.serplusvita.data.api.AuthService
 import com.tridevs.serplusvita.data.api.HabitoApi
 import com.tridevs.serplusvita.data.api.HistorialHabitosApi
-import com.tridevs.serplusvita.data.api.PesosApi
+import com.tridevs.serplusvita.data.api.PesoApi
 import com.tridevs.serplusvita.data.api.UsuarioApi
 import com.tridevs.serplusvita.data.network.AuthInterceptor
 import com.tridevs.serplusvita.utils.SesionManager
@@ -32,13 +32,12 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideRetrofit(okHttpClient: OkHttpClient): Retrofit {
-        // ✅  FIX: Configure Gson to translate snake_case to camelCase
         val gson = GsonBuilder()
             .setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES)
             .create()
 
         return Retrofit.Builder()
-            .baseUrl("http://10.144.253.59:3000/")
+            .baseUrl("http://192.168.1.5:3000/")
             .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create(gson))
             .build()
@@ -66,6 +65,6 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun providePesosApi(retrofit: Retrofit): PesosApi =
-        retrofit.create(PesosApi::class.java)
+    fun providePesoApi(retrofit: Retrofit): PesoApi =
+        retrofit.create(PesoApi::class.java)
 }

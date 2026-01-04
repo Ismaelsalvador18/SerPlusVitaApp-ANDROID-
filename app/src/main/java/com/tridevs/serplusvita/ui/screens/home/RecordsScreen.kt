@@ -1,7 +1,9 @@
 package com.tridevs.serplusvita.ui.screens.home
 
+import android.graphics.Paint
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -16,26 +18,44 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.tridevs.serplusvita.data.models.HabitoResponse
+import com.tridevs.serplusvita.data.models.PesoResponse
 import com.tridevs.serplusvita.ui.theme.*
+import com.tridevs.serplusvita.utils.SesionManager
+import com.tridevs.serplusvita.viewmodels.habitos.HabitoViewModel
+import com.tridevs.serplusvita.viewmodels.peso.PesoViewModel
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeParseException
+import java.util.Locale
 import kotlin.math.pow
 
 @Composable
-fun RecordsScreen() {
+fun RecordsScreen(
+    habitoViewModel: HabitoViewModel = hiltViewModel(),
+    pesoViewModel: PesoViewModel = hiltViewModel()
+) {
     var currentView by remember { mutableStateOf("main") }
 
     when (currentView) {
         "main" -> MainRecordsView { destination -> currentView = destination }
-        "habit_registry" -> HabitRegistryView { currentView = "main" }
-        "habit_history" -> HabitHistoryView { currentView = "main" }
-        "weight_registry" -> WeightRegistryView { currentView = "main" }
+        "habit_registry" -> HabitRegistryView(habitoViewModel) { currentView = "main" }
+        "habit_history" -> HabitHistoryView(habitoViewModel) { currentView = "main" }
+        "weight_registry" -> WeightRegistryView(pesoViewModel) { currentView = "main" }
         "metric_registry" -> MetricRegistryView(onNavigate = { dest -> currentView = dest }, onBack = { currentView = "main" })
         "imc_calculator" -> ImcCalculatorScreen { currentView = "metric_registry" }
-        "tmb_calculator" -> TmbCalculatorScreen { currentView = "metric_registry" } // ✅ Nueva vista
+        "tmb_calculator" -> TmbCalculatorScreen { currentView = "metric_registry" }
     }
 }
 
@@ -101,8 +121,8 @@ fun TmbCalculatorScreen(onBack: () -> Unit) {
 
         // GÉNERO
         Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-            TmbGeneroItem(label = "Hombre", simbolo = "\u2642", esSeleccionado = generoSeleccionado == "Hombre", modifier = Modifier.weight(1f)) { generoSeleccionado = "Hombre" }
-            TmbGeneroItem(label = "Mujer", simbolo = "\u2640", esSeleccionado = generoSeleccionado == "Mujer", modifier = Modifier.weight(1f)) { generoSeleccionado = "Mujer" }
+            TmbGeneroItem(label = "Hombre", simbolo = "♂", esSeleccionado = generoSeleccionado == "Hombre", modifier = Modifier.weight(1f)) { generoSeleccionado = "Hombre" }
+            TmbGeneroItem(label = "Mujer", simbolo = "♀", esSeleccionado = generoSeleccionado == "Mujer", modifier = Modifier.weight(1f)) { generoSeleccionado = "Mujer" }
         }
         Spacer(modifier = Modifier.height(25.dp))
 
@@ -176,7 +196,6 @@ fun TmbGeneroItem(label: String, simbolo: String, esSeleccionado: Boolean, modif
     }
 }
 
-// --- Vistas y Composables Anteriores (sin cambios significativos) ---
 
 @Composable
 fun ImcCalculatorScreen(onBack: () -> Unit) {
@@ -221,8 +240,8 @@ fun ImcCalculatorScreen(onBack: () -> Unit) {
 
         // SELECCIÓN DE GÉNERO
         Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-            GeneroItem(label = "Hombre", simbolo = "\u2642", esSeleccionado = generoSeleccionado == "Hombre", modifier = Modifier.weight(1f)) { generoSeleccionado = "Hombre" }
-            GeneroItem(label = "Mujer", simbolo = "\u2640", esSeleccionado = generoSeleccionado == "Mujer", modifier = Modifier.weight(1f)) { generoSeleccionado = "Mujer" }
+            GeneroItem(label = "Hombre", simbolo = "♂", esSeleccionado = generoSeleccionado == "Hombre", modifier = Modifier.weight(1f)) { generoSeleccionado = "Hombre" }
+            GeneroItem(label = "Mujer", simbolo = "♀", esSeleccionado = generoSeleccionado == "Mujer", modifier = Modifier.weight(1f)) { generoSeleccionado = "Mujer" }
         }
         Spacer(modifier = Modifier.height(25.dp))
 
@@ -389,11 +408,25 @@ fun ItemMetricaFisiologica(titulo: String, descripcion: String, onIrClick: () ->
     }
 }
 
-
 @Composable
-fun WeightRegistryView(onBack: () -> Unit) {
-    var weight by remember { mutableStateOf("") }
-    var selectedPeriod by remember { mutableStateOf("Semana") }
+fun WeightRegistryView(viewModel: PesoViewModel, onBack: () -> Unit) {
+    val context = LocalContext.current
+    val sesionManager = SesionManager(context)
+    val usuarioId = sesionManager.obtenerSesion()?.id
+
+    var weightInput by remember { mutableStateOf("") }
+    var selectedPeriod by remember { mutableStateOf(7) } // 7 o 30
+
+    val historialPeso by viewModel.historialPeso.collectAsState()
+    val loading by viewModel.loading.collectAsState()
+
+    LaunchedEffect(usuarioId, selectedPeriod) {
+        usuarioId?.let {
+            viewModel.obtenerHistorialPeso(it, selectedPeriod)
+        }
+    }
+
+    val hoySinRegistro = historialPeso.none { it.fecha.startsWith(LocalDate.now().toString()) } && historialPeso.isNotEmpty()
 
     Column(
         modifier = Modifier
@@ -402,7 +435,6 @@ fun WeightRegistryView(onBack: () -> Unit) {
             .padding(20.dp)
             .verticalScroll(rememberScrollState())
     ) {
-        // TÍTULO
         Text(
             text = "Registro de Peso",
             color = Principal,
@@ -416,7 +448,6 @@ fun WeightRegistryView(onBack: () -> Unit) {
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        // TARJETA DE REGISTRO
         Card(
             modifier = Modifier
                 .fillMaxWidth()
@@ -428,17 +459,15 @@ fun WeightRegistryView(onBack: () -> Unit) {
                 modifier = Modifier.padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
-                // INPUT PESO
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text(text = "Peso:", color = Principal, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                     OutlinedTextField(
-                        value = weight,
-                        onValueChange = { weight = it },
-                        modifier = Modifier.width(110.dp).background(Color.White, RoundedCornerShape(10.dp)),
+                        value = weightInput,
+                        onValueChange = { weightInput = it },
+                        modifier = Modifier.weight(1f).background(Color.White, RoundedCornerShape(10.dp)),
                         placeholder = { Text("60.0 kg", color = Secundario, fontSize = 14.sp) },
                         singleLine = true,
                         shape = RoundedCornerShape(10.dp),
@@ -447,59 +476,56 @@ fun WeightRegistryView(onBack: () -> Unit) {
                             unfocusedBorderColor = Secundario
                         )
                     )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            val peso = weightInput.toDoubleOrNull()
+                            if (peso != null && usuarioId != null) {
+                                viewModel.registrarPeso(usuarioId, peso, selectedPeriod)
+                                weightInput = ""
+                            }
+                        },
+                        enabled = weightInput.isNotBlank()
+                    ) {
+                        Text("Guardar")
+                    }
+                }
+                
+                if (hoySinRegistro && !loading) {
+                    Text(
+                        text = "Hoy no has registrado un peso. ¡Regístralo para seguir tu progreso!",
+                        color = Principal,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
                 }
 
-                // SELECTOR SEMANA / MES
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Button(
-                        onClick = { selectedPeriod = "Semana" },
+                        onClick = { selectedPeriod = 7 },
                         modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = if (selectedPeriod == "Semana") Background_Seleccionado else Color.White),
+                        colors = ButtonDefaults.buttonColors(containerColor = if (selectedPeriod == 7) Background_Seleccionado else Color.White),
                         shape = RoundedCornerShape(8.dp),
                         border = BorderStroke(1.dp, Secundario)
                     ) { Text("Semana", color = Principal) }
                     Button(
-                        onClick = { selectedPeriod = "Mes" },
+                        onClick = { selectedPeriod = 30 },
                         modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = if (selectedPeriod == "Mes") Background_Seleccionado else Color.White),
+                        colors = ButtonDefaults.buttonColors(containerColor = if (selectedPeriod == 30) Background_Seleccionado else Color.White),
                         shape = RoundedCornerShape(8.dp),
                         border = BorderStroke(1.dp, Secundario)
                     ) { Text("Mes", color = Principal) }
                 }
 
-                // GRÁFICA
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(180.dp)
-                        .background(Color.White, RoundedCornerShape(10.dp))
-                        .padding(12.dp)
-                ) {
-                    Column {
-                        Row(
-                            modifier = Modifier.weight(1f).fillMaxWidth(),
-                            verticalAlignment = Alignment.Bottom,
-                            horizontalArrangement = Arrangement.SpaceEvenly
-                        ) {
-                            val alturas = listOf(0.6f, 0.4f, 0.75f, 0.5f, 0.9f, 0.35f, 0.6f)
-                            alturas.forEach { ratio ->
-                                Box(modifier = Modifier.width(18.dp).fillMaxHeight(ratio).background(Secundario, RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp)))
-                            }
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceEvenly
-                        ) {
-                            listOf("Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom").forEach { dia ->
-                                Text(text = dia, color = Principal, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
+                if (loading) {
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
+                } else if (historialPeso.isNotEmpty()) {
+                     GraficoDeBarras(pesos = historialPeso)
+                } else {
+                    Text("No hay datos de peso para mostrar.", modifier = Modifier.align(Alignment.CenterHorizontally))
                 }
             }
         }
         Spacer(modifier = Modifier.height(24.dp))
-        // BOTÓN DE VOLVER
         Button(
             onClick = onBack,
             modifier = Modifier.fillMaxWidth().height(60.dp),
@@ -512,9 +538,88 @@ fun WeightRegistryView(onBack: () -> Unit) {
     }
 }
 
+@Composable
+fun GraficoDeBarras(pesos: List<PesoResponse>) {
+    val maxPeso = pesos.maxOfOrNull { it.peso } ?: 0.0
+    val minPeso = pesos.minOfOrNull { it.peso } ?: 0.0
+    val pesoTextColor = LocalContentColor.current.toArgb()
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(220.dp)
+            .background(Color.White, RoundedCornerShape(10.dp))
+            .padding(16.dp)
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val barWidth = size.width / (pesos.size * 2)
+            val bottomPadding = 60f 
+
+            pesos.forEachIndexed { index, peso ->
+                val barHeight = ((peso.peso - minPeso) / (maxPeso - minPeso).coerceAtLeast(1.0) * (size.height - bottomPadding)).toFloat()
+                val barLeft = index * 2 * barWidth + barWidth / 2
+
+                // Dibuja la barra
+                drawRect(
+                    color = Secundario,
+                    topLeft = Offset(
+                        x = barLeft,
+                        y = size.height - barHeight - bottomPadding
+                    ),
+                    size = Size(barWidth, barHeight)
+                )
+
+                // Dibuja el texto del peso encima de la barra
+                drawContext.canvas.nativeCanvas.drawText(
+                    String.format("%.1f kg", peso.peso),
+                    barLeft + barWidth / 2,
+                    size.height - barHeight - bottomPadding - 10,
+                    Paint().apply {
+                        color = pesoTextColor
+                        textAlign = Paint.Align.CENTER
+                        textSize = 35f // Aumentar tamaño de texto
+                    }
+                )
+
+                // Dibuja el texto de la fecha debajo de la barra
+                val formattedDate = try {
+                    val date = LocalDate.parse(peso.fecha, DateTimeFormatter.ISO_DATE_TIME)
+                    date.format(DateTimeFormatter.ofPattern("dd/MM"))
+                } catch (e: Exception) {
+                    "N/A"
+                }
+
+                drawContext.canvas.nativeCanvas.drawText(
+                    formattedDate,
+                    barLeft + barWidth / 2,
+                    size.height - bottomPadding + 40, // Ajustar posición
+                    Paint().apply {
+                        color = pesoTextColor
+                        textAlign = Paint.Align.CENTER
+                        textSize = 30f // Aumentar tamaño de texto
+                    }
+                )
+            }
+        }
+    }
+}
+
 
 @Composable
-private fun HabitHistoryView(onBack: () -> Unit) {
+private fun HabitHistoryView(viewModel: HabitoViewModel, onBack: () -> Unit) {
+    val context = LocalContext.current
+    val sesionManager = SesionManager(context)
+    val usuarioId = sesionManager.obtenerSesion()?.id
+
+    val historial by viewModel.historialHabitos.collectAsState()
+    val loading by viewModel.loading.collectAsState()
+
+    LaunchedEffect(usuarioId) {
+        usuarioId?.let { viewModel.obtenerHistorial(it) }
+    }
+
+    val groupedHistorial = historial.groupBy { it.fecha.substringBefore('T') }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -522,7 +627,7 @@ private fun HabitHistoryView(onBack: () -> Unit) {
             .padding(20.dp)
             .verticalScroll(rememberScrollState())
     ) {
-        // TÍTULO
+
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -544,24 +649,62 @@ private fun HabitHistoryView(onBack: () -> Unit) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        val historial = listOf(
-            Pair("Ejercicio", true),
-            Pair("Sueño", true),
-            Pair("Meditación", true),
-            Pair("Lectura", false),
-            Pair("Ejercicio", true),
-            Pair("Sueño", true),
-            Pair("Meditación", false),
-            Pair("Lectura", true),
-            Pair("Ejercicio", true),
-            Pair("Meditación", false)
-        )
+        if (loading) {
+            CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
+        } else {
+            if (groupedHistorial.isEmpty()) {
+                Text("No hay historial de hábitos para mostrar.", color = Principal, modifier = Modifier.align(Alignment.CenterHorizontally))
+            } else {
+                groupedHistorial.keys.sortedDescending().forEach { fecha ->
+                    Text(
+                        text = formatDate(fecha),
+                        color = Principal,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                    groupedHistorial[fecha]?.forEach { habito ->
+                        FilaHistorialHabito(titulo = habito.titulo, esCompletado = habito.completado)
+                    }
+                }
+            }
+        }
 
-        historial.forEach { item ->
-            FilaHistorialHabito(titulo = item.first, esCompletado = item.second)
+        Spacer(modifier = Modifier.weight(1f))
+
+        Button(
+            onClick = onBack,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(60.dp)
+                .padding(top = 20.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = Background_Box),
+            shape = RoundedCornerShape(8.dp),
+            border = BorderStroke(1.dp, Principal)
+        ) {
+            Text("Volver", color = Principal, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
+
+fun formatDate(dateString: String): String {
+    return try {
+        val inputFormatter = DateTimeFormatter.ISO_DATE_TIME
+        val date = LocalDate.parse(dateString, inputFormatter)
+        val outputFormatter = DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM", Locale("es", "ES"))
+        date.format(outputFormatter).replaceFirstChar { it.uppercase() }
+    } catch (e: DateTimeParseException) {
+        try {
+            val inputFormatter = DateTimeFormatter.ISO_LOCAL_DATE
+            val date = LocalDate.parse(dateString, inputFormatter)
+            val outputFormatter = DateTimeFormatter.ofPattern("EEEE, d 'de' MMMM", Locale("es", "ES"))
+            date.format(outputFormatter).replaceFirstChar { it.uppercase() }
+        } catch (e2: DateTimeParseException) {
+            dateString
+        }
+    }
+}
+
 
 @Composable
 private fun FilaHistorialHabito(titulo: String, esCompletado: Boolean) {
@@ -602,7 +745,42 @@ private fun FilaHistorialHabito(titulo: String, esCompletado: Boolean) {
 }
 
 @Composable
-private fun HabitRegistryView(onBack: () -> Unit) {
+private fun HabitRegistryView(viewModel: HabitoViewModel, onBack: () -> Unit) {
+    val context = LocalContext.current
+    val sesionManager = SesionManager(context)
+    val usuarioId = sesionManager.obtenerSesion()?.id
+
+    val habitos by viewModel.habitos.collectAsState()
+    val loading by viewModel.loading.collectAsState()
+    var habitoAEliminar by remember { mutableStateOf<HabitoResponse?>(null) }
+
+    LaunchedEffect(usuarioId) {
+        usuarioId?.let { viewModel.listarHabitos(it) }
+    }
+
+    if (habitoAEliminar != null) {
+        AlertDialog(
+            onDismissRequest = { habitoAEliminar = null },
+            title = { Text("Confirmar Eliminación") },
+            text = { Text("¿Estás seguro de que quieres eliminar el hábito '${habitoAEliminar?.titulo}'?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        usuarioId?.let { viewModel.eliminarHabito(it, habitoAEliminar!!.id) }
+                        habitoAEliminar = null
+                    }
+                ) {
+                    Text("Eliminar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { habitoAEliminar = null }) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -625,11 +803,25 @@ private fun HabitRegistryView(onBack: () -> Unit) {
         Spacer(modifier = Modifier.height(16.dp))
 
         // LISTA DE TARJETAS
-        val habitos = listOf("Caminata", "Agua", "Ejercicio", "Sueño", "Alimentación")
-        habitos.forEach { habito ->
-            TarjetaHabitoEditable(titulo = habito)
-            Spacer(modifier = Modifier.height(12.dp))
+        if (loading) {
+            CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
+        } else {
+            habitos.forEach { habito ->
+                TarjetaHabitoEditable(
+                    habito = habito,
+                    onHabilitar = {
+                        usuarioId?.let { uid -> viewModel.habilitarHabito(uid, habito) }
+                    },
+                    onDeshabilitar = {
+                        usuarioId?.let { uid -> viewModel.deshabilitarHabito(uid, habito) }
+                    },
+                    onEliminar = { habitoAEliminar = habito }
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            }
         }
+
+        Spacer(modifier = Modifier.weight(1f))
 
         // BOTÓN INFERIOR
         Button(
@@ -643,20 +835,14 @@ private fun HabitRegistryView(onBack: () -> Unit) {
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Lectura",
+                    text = "Volver",
                     color = Principal,
                     fontSize = 24.sp,
                     fontWeight = FontWeight.Bold
-                )
-                Icon(
-                    imageVector = Icons.Default.KeyboardReturn,
-                    contentDescription = null,
-                    tint = Principal,
-                    modifier = Modifier.size(28.dp)
                 )
             }
         }
@@ -664,13 +850,21 @@ private fun HabitRegistryView(onBack: () -> Unit) {
 }
 
 @Composable
-private fun TarjetaHabitoEditable(titulo: String) {
+private fun TarjetaHabitoEditable(
+    habito: HabitoResponse,
+    onHabilitar: () -> Unit,
+    onDeshabilitar: () -> Unit,
+    onEliminar: () -> Unit
+) {
+    val colorFondo = if (habito.habilitado) Background_Box else Secundario.copy(alpha = 0.5f)
+    val colorTexto = if (habito.habilitado) Principal else Color.White
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .height(65.dp)
             .border(1.dp, Contorno_Base, RoundedCornerShape(8.dp)),
-        colors = CardDefaults.cardColors(containerColor = Background_Box),
+        colors = CardDefaults.cardColors(containerColor = colorFondo),
         shape = RoundedCornerShape(8.dp)
     ) {
         Row(
@@ -681,27 +875,38 @@ private fun TarjetaHabitoEditable(titulo: String) {
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = titulo,
-                color = Principal,
+                text = habito.titulo,
+                color = colorTexto,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = { /* Editar */ }) {
-                    Icon(
-                        imageVector = Icons.Default.Edit,
-                        contentDescription = "Editar",
-                        tint = Principal,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-                IconButton(onClick = { /* Borrar */ }) {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "Borrar",
-                        tint = Principal,
-                        modifier = Modifier.size(20.dp)
-                    )
+                if (habito.habilitado) {
+                    IconButton(onClick = onDeshabilitar) {
+                        Icon(
+                            imageVector = Icons.Default.VisibilityOff,
+                            contentDescription = "Deshabilitar",
+                            tint = colorTexto,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    IconButton(onClick = onEliminar) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Borrar",
+                            tint = colorTexto,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                } else {
+                    IconButton(onClick = onHabilitar) {
+                        Icon(
+                            imageVector = Icons.Default.Visibility,
+                            contentDescription = "Habilitar",
+                            tint = colorTexto,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
             }
         }

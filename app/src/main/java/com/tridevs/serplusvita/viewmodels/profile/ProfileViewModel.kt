@@ -3,6 +3,7 @@ package com.tridevs.serplusvita.viewmodels.profile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.tridevs.serplusvita.data.models.Usuario
+import com.tridevs.serplusvita.data.models.UsuarioUpdateRequest
 import com.tridevs.serplusvita.repository.UsuarioRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,16 +42,34 @@ class ProfileViewModel @Inject constructor(
             _loading.value = false
         }
     }
-    
+
+    fun actualizarUsuario(usuarioId: Long, request: UsuarioUpdateRequest) {
+        viewModelScope.launch {
+            _loading.value = true
+            _error.value = null
+            try {
+                val result = usuarioRepository.actualizarUsuario(usuarioId, request)
+                if (result?.data != null) {
+                    _usuario.value = result.data // Actualiza los datos del usuario si tiene éxito
+                } else {
+                    _error.value = "No se pudo actualizar el usuario."
+                }
+            } catch (e: Exception) {
+                _error.value = "Error de red: ${e.message}"
+            }
+            _loading.value = false
+        }
+    }
+
     fun eliminarUsuario(usuarioId: Long, onAccountDeleted: () -> Unit) {
         viewModelScope.launch {
-             _loading.value = true
+            _loading.value = true
             _error.value = null
             try {
                 usuarioRepository.eliminarUsuario(usuarioId)
                 onAccountDeleted()
             } catch (e: Exception) {
-                 _error.value = "Error al eliminar la cuenta: ${e.message}"
+                _error.value = "Error al eliminar la cuenta: ${e.message}"
             }
             _loading.value = false
         }
